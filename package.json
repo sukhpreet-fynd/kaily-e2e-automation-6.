@@ -1,0 +1,25 @@
+{
+  "name": "kaily-e2e-automation",
+  "version": "1.0.0",
+  "description": "Organization-scoped Kaily Playwright P0 sanity foundation",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:unit",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:list": "playwright test --list",
+    "auth:capture": "node --experimental-strip-types scripts/capture-auth.ts",
+    "test:p0": "playwright test --project=p0",
+    "test:helpdesk": "playwright test --project=p0 tests/p0/helpdesk.spec.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.3",
+    "dotenv": "^18.0.4",
+    "typescript": "^7.0.2"
+  }
+}
