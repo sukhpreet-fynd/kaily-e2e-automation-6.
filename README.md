@@ -1,4 +1,8 @@
-# Kaily P0 sanity foundation
+# kaily-e2e-automation-6.
+
+Playwright TypeScript post-deployment sanity automation suite for Kaily.  7.
+
+## P0 sanity foundation
 
 This repository targets only organization `e6af7bff-e89d-467b-9efe-69a2c9ad0957` at
 `https://console.fynd.com/kaily/asia-south1/`. Production use for this organization
