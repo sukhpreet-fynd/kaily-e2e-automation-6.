@@ -7,6 +7,14 @@ import { HttpFailure, jsonRequest } from '../../src/api/transport.ts';
 import { HelpdeskClient } from '../../src/api/helpdesk-client.ts';
 import { IntegrationInbound } from '../../src/channels/integration-inbound.ts';
 import { testMessage } from '../../src/data/test-message.ts';
+import { isLoginResponse } from '../../src/auth/enter-kaily.ts';
+
+test('login verification recognizes session and only the approved account token endpoint', () => {
+  assert.equal(isLoginResponse('https://example.invalid/service/auth/v1.0/session', 'session', APPROVED_ORG), true);
+  assert.equal(isLoginResponse(`https://example.invalid/service/web/token/${APPROVED_ORG}`, 'account', APPROVED_ORG), true);
+  assert.equal(isLoginResponse('https://example.invalid/service/web/token/other-org', 'account', APPROVED_ORG), false);
+  assert.equal(isLoginResponse('https://example.invalid/session', 'session', APPROVED_ORG), false);
+});
 
 const env = {
   KAILY_ORG_ID: APPROVED_ORG, KAILY_BASE_URL: APPROVED_BASE,

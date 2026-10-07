@@ -37,34 +37,59 @@ npm run test:list
 `npm test` intentionally runs only offline unit tests. API mocks exist solely in
 `tests/unit`; production P0 tests never mock application responses.
 
-## Configure and capture a session
+## Manual authentication: do this first
 
-Copy `.env.example` to `.env`. Populate the **verified** main API gateway base and
-its exact origin in `KAILY_API_ORIGINS`. Base URLs may include a gateway prefix but
-must not include `/v1`, credentials or query parameters. API origins are not guessed.
-Use a dedicated test agent with membership in the approved organization only.
+No `.env` or API configuration is needed for this step. Use the approved account.
 
 ```sh
-npm run auth:capture
+npm run auth:setup
 ```
 
-This command opens a real browser and contacts production. Complete legitimate
-SSO/OTP yourself; the script does not bypass authentication. Navigate to the approved
-Helpdesk table view. The script waits for it to render after MFA and saves automatically.
-Session state is saved with
-owner-only file permissions under ignored `playwright/.auth/`.
+1. A **headed** Playwright browser opens Kaily's login page and follows its SSO redirect.
+2. Enter your email, password and **Google Authenticator OTP manually** in that browser.
+   The script waits up to 10 minutes; keep the browser open. No credentials, OTP,
+   TOTP seed or browser console output are captured in logs.
+3. After successful sign-in, the script automatically opens the approved organization's
+   dashboard. It verifies session/account authorization, the exact dashboard route,
+   and the visible dashboard header subtitle from the frontend source.
+4. Only then does it save Playwright `storageState` (cookies and local storage) to
+   **`.auth/user.json`** and close the browser. No Helpdesk navigation is required.
+
+The file is written atomically with owner-only permissions. `.auth/` is gitignored;
+never commit or upload it. The previous state is retained if login fails. There is
+no TOTP automation. `npm run auth:capture` remains an alias for the same setup.
+
+```sh
+npm run test:login
+```
+
+`test:login` uses `.auth/user.json` in a fresh context and verifies the dashboard.
+Missing/invalid state, a revoked/expired session (HTTP 401), or a redirect to sign-in
+reports **Run npm run auth:setup again**. Dashboard/network/access failures are
+separate failures; the suite never bypasses MFA or silently recaptures authentication.
+
+## Reuse the login in Helpdesk tests
+
+Every Playwright project uses `.auth/user.json` from the shared configuration. The
+`auth` project validates it before the dependent Helpdesk/P0 project. Each test gets
+an isolated browser context with the same login; email/password/OTP are not re-entered
+for each test. Shared cookies/local storage do not imply shared page state. No
+sessionStorage authentication dependency was found in the reviewed Kaily flow.
+
+For Helpdesk API checks, copy `.env.example` to `.env` and populate the **verified**
+main API gateway base and its exact origin in `KAILY_API_ORIGINS`. Base URLs may
+include a gateway prefix but must not include `/v1`, credentials or query parameters.
+API origins are not guessed. Leave inbound writes disabled.
 
 ```sh
 npm run test:helpdesk
 ```
 
-This contacts production and validates the saved session before the Helpdesk check.
 The UI may perform its normal activity/status calls; this is not a guarantee of a
-strictly read-only backend transaction. Renew expired sessions with `auth:capture`.
-All test contexts use this same authenticated account through the saved storage state;
-they do not request a new OTP for each test. The auth dependency verifies the session
-once before the P0 project. Expired or revoked sessions require fresh MFA; OTP codes
-are never stored or reused. No unattended SSO/CI credential flow is assumed.
+strictly read-only backend transaction. Renew expired sessions with `auth:setup`.
+No unattended SSO/CI credential flow is assumed. Older `.env` files must remove
+`KAILY_AUTH_STATE_PATH` or change it to `.auth/user.json`; the old
+`playwright/.auth/agent.json` is not used and remains gitignored.
 
 ## Enable the inbound scenario only after isolation
 

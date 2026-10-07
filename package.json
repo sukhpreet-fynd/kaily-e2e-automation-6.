@@ -9,6 +9,8 @@
     "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
     "test:list": "playwright test --list",
     "auth:capture": "node --experimental-strip-types scripts/capture-auth.ts",
+    "auth:setup": "node --experimental-strip-types scripts/capture-auth.ts",
+    "test:login": "playwright test --project=auth",
     "test:p0": "playwright test --project=p0",
     "test:helpdesk": "playwright test --project=p0 tests/p0/helpdesk.spec.ts"
   },

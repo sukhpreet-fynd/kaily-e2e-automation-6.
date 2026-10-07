@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { coreConfig } from './src/config/env.ts';
 const config = coreConfig();
 export default defineConfig({
+  globalSetup: './src/auth/state.ts',
   testDir: './tests', testIgnore: '**/unit/**', fullyParallel: false, workers: 1, retries: 0,
   timeout: 180_000, expect: { timeout: 15_000 }, reporter: [['list']],
   use: {

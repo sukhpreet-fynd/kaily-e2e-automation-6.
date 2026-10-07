@@ -1,5 +1,5 @@
 import { config as dotenv } from 'dotenv';
-import { resolve, relative, isAbsolute } from 'node:path';
+import { resolve } from 'node:path';
 
 dotenv({ quiet: true });
 export const APPROVED_ORG = 'e6af7bff-e89d-467b-9efe-69a2c9ad0957';
@@ -23,10 +23,9 @@ function apiBase(value: string, origins: string[]): string {
 export function coreConfig(env: Environment = process.env) {
   if ((env.KAILY_ORG_ID || APPROVED_ORG) !== APPROVED_ORG) throw new Error('Organization is outside the authorized scope.');
   if ((env.KAILY_BASE_URL || APPROVED_BASE) !== APPROVED_BASE) throw new Error('Console URL is outside the authorized scope.');
-  const authFile = resolve(env.KAILY_AUTH_STATE_PATH || 'playwright/.auth/agent.json');
-  const authRelative = relative(resolve('playwright/.auth'), authFile);
-  if (!authRelative || authRelative.startsWith('..') || isAbsolute(authRelative)) {
-    throw new Error('Auth state must be stored inside playwright/.auth/.');
+  const authFile = resolve('.auth/user.json');
+  if (env.KAILY_AUTH_STATE_PATH && resolve(env.KAILY_AUTH_STATE_PATH) !== authFile) {
+    throw new Error('Auth state must use .auth/user.json. Update KAILY_AUTH_STATE_PATH or remove the override.');
   }
   const pollTimeout = Number(env.KAILY_POLL_TIMEOUT_MS || 45_000);
   if (!Number.isInteger(pollTimeout) || pollTimeout < 1000 || pollTimeout > 120_000) {
