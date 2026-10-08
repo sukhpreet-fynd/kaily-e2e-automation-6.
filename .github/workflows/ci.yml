@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 20 * * *'  # 20:00 UTC = 01:30 IST next day — nightly UAT run.
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: 'Run the live UAT jobs (api/ui/security) on demand'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    name: Offline checks (typecheck + unit + SCA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: SCA (npm audit)
+        env:
+          SCA_FAIL_LEVEL: ${{ vars.SCA_FAIL_LEVEL || 'high' }}
+        run: npm run audit:sca
+
+  live-uat:
+    name: Live UAT (api + ui + security)
+    needs: offline
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live)
+    runs-on: ubuntu-latest
+    env:
+      KAILY_ENV: uat
+      KAILY_PUBLIC_API_BASE_URL: ${{ secrets.KAILY_PUBLIC_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Restore .auth/user.json from secret
+        env:
+          KAILY_AUTH_STATE_B64: ${{ secrets.KAILY_AUTH_STATE_B64_UAT }}
+        run: |
+          if [ -z "$KAILY_AUTH_STATE_B64" ]; then
+            echo "::error::Secret KAILY_AUTH_STATE_B64_UAT is not set. Capture .auth/user.json locally via 'npm run auth:setup', base64 it ('base64 -i .auth/user.json | pbcopy'), and add it as a repo secret."
+            exit 1
+          fi
+          mkdir -p .auth
+          printf '%s' "$KAILY_AUTH_STATE_B64" | base64 --decode > .auth/user.json
+          chmod 600 .auth/user.json
+      - name: API tests
+        run: npm run test:api
+      - name: UI tests
+        run: npm run test:ui
+      - name: Security tests
+        run: npm run test:security
+      - name: Contract tests
+        run: npm run test:contract
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  k6-smoke:
+    name: k6 smoke (manual)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_live
+    runs-on: ubuntu-latest
+    env:
+      K6_ENV: uat
+      K6_BASE_URL: https://api.kaily.uat.fyndx1.de/asia-south1/service/panel/console
+      K6_PROFILE: smoke
+      K6_BEARER: ${{ secrets.KAILY_BEARER_UAT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+      - name: Health scenario (no auth)
+        run: npm run load:health
+      - name: Threads scenario (requires bearer)
+        if: ${{ env.K6_BEARER != '' }}
+        run: npm run load:threads

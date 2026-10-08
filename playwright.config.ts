@@ -13,5 +13,9 @@ export default defineConfig({
   projects: [
     { name: 'auth', testMatch: '**/setup/*.setup.ts' },
     { name: 'p0', testMatch: '**/p0/*.spec.ts', dependencies: ['auth'] },
+    { name: 'api', testMatch: '**/api/*.spec.ts', dependencies: ['auth'] },
+    { name: 'ui', testMatch: '**/ui/*.spec.ts', dependencies: ['auth'] },
+    { name: 'security', testMatch: '**/security/*.spec.ts', dependencies: ['auth'] },
+    { name: 'contract', testMatch: '**/contract/*.spec.ts', dependencies: ['auth'] },
   ],
 });

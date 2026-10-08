@@ -4,10 +4,32 @@ Playwright TypeScript post-deployment sanity automation suite for Kaily.  7.
 
 ## P0 sanity foundation
 
-This repository targets only organization `e6af7bff-e89d-467b-9efe-69a2c9ad0957` at
-`https://console.fynd.com/kaily/asia-south1/`. Production use for this organization
-was explicitly authorized. Other organizations are rejected by configuration and
-blocked when their account-scoped browser URLs are requested.
+This repository targets an **allowlist** of authorized environments defined in
+`src/config/env.ts`. Select the active one with `KAILY_ENV=prod|uat` (default `prod`).
+
+| Env | Console | Org |
+| --- | --- | --- |
+| `prod` | `https://console.fynd.com/kaily/asia-south1/` | `e6af7bff-e89d-467b-9efe-69a2c9ad0957` |
+| `uat`  | `https://console.uat.fyndx1.de/kaily/asia-south1/` | `1e31f28f-f6bd-45b6-995d-fd02076d6d78` |
+
+Both tuples (console URL + org + API host + API origins) are hard-coded as
+approved pairs. Any mismatch — wrong env, swapped org, foreign API host — is
+rejected before a request is made. Other organizations remain blocked at the
+account-scope guard and will trigger a browser navigation abort.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs offline checks (typecheck + unit + SCA) on every
+PR and push to `main`. The live UAT job (api + ui + security) runs nightly at
+20:00 UTC and on manual dispatch; it depends on two repository secrets:
+
+- `KAILY_AUTH_STATE_B64_UAT` — base64 of a locally captured `.auth/user.json`
+  for the UAT org. Capture via `npm run auth:setup` (with `KAILY_ENV=uat`), then
+  `base64 -i .auth/user.json | pbcopy` and paste as the secret. Refresh when it
+  expires. The workflow decodes into `.auth/user.json` with mode 0600 for the run.
+- `KAILY_BEARER_UAT` (optional) — a short-lived UAT bearer used by the on-demand
+  `k6-smoke` job. Capture with `npm run load:bearer`. If missing, the k6 job
+  only runs the no-auth health scenario.
 
 ## Implemented scope
 
@@ -23,6 +45,26 @@ operations are implemented. Test records are retained. Message insertion itself
 can trigger configured integrations, automations and notifications; isolation must
 be established before enabling inbound writes. The isolation flag records operator
 confirmation, not an automated verification of every server-side side effect.
+
+## Suite layers
+
+Four Playwright projects and a k6 load layer sit on top of the shared `.auth/user.json`
+session. All layers are additive: the P0 flow still runs the same way; the new layers
+reuse the same login and never re-enter MFA.
+
+| Layer | Scope | How to run |
+| --- | --- | --- |
+| `api` | Read-only typed clients for threads, copilotapps, settings, analytics, audit, developers, agent-users and health probes. All GETs enforce the approved-org guard, map 401 to a session re-login prompt, and never log bodies or headers. | `npm run test:api` (health-only: `npm run test:api:health`) |
+| `ui` | Lightweight Playwright specs for Insights, My Agents, API Keys (Helpdesk settings), Contacts, Teams, and a cross-page navigation smoke that fails only on hard `pageerror`. Page objects live under `src/pages/`. | `npm run test:ui` |
+| `security` | Static authz probes: 401 on missing/malformed bearer, 403 on wrong-org accountId (tenant isolation via the Neo `account-parser` middleware), public-API bearer-only auth, and a header-leakage guard that asserts tracing/screenshots stay off. Opt-in 10-GET rate-limit probe behind `KAILY_PROBE_RATE_LIMITS=true`. | `npm run test:security` |
+| `contract` | Response-shape guards: thread list / detail, messages, copilot apps, health, audit, developer scopes. Fail loudly when the server renames or retypes a field the UI depends on. | `npm run test:contract` |
+| `load` (k6) | 10 scenarios: `_healthz`, `health-concurrent`, threads list, copilotapps list, copilotapps detail, thread messages, analytics, settings, audit, agent-users. `smoke` / `baseline` / `stress` / `health-soak` profiles with SLO thresholds. Rate-limit math respects the Neo `6/60s` cap; `stress` is only allowed on `health-concurrent`. | `brew install k6`, then `npm run load:bearer` once to stash a short-lived bearer in `.auth/bearer`, then `export K6_BEARER=$(cat .auth/bearer); npm run load:health` (etc). Full workflow in `tests/load/README.md`. Never run `K6_PROFILE=stress` against prod. |
+| SCA | `npm audit --json` with a severity gate + lockfile freshness gate (fails if `package-lock.json` is >7d older than `package.json`). | `npm run audit:sca`. Combine with security specs via `npm run security:all`. |
+
+All five layers depend on the `auth` project and reuse `.auth/user.json`; email,
+password and OTP are never re-entered per layer. Bearer tokens stay in memory —
+only `scripts/capture-bearer.ts` ever writes one to disk, atomically with mode 0600,
+into the gitignored `.auth/bearer` file to bridge Playwright to k6.
 
 ## Offline checks (no Kaily traffic)
 
